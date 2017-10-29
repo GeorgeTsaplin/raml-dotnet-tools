@@ -2,12 +2,14 @@
 <#@ assembly name="$(binDir)RAML.Parser.dll" #>
 <#@ assembly name="$(binDir)EdgeJs.dll" #>
 <#@ assembly name="$(binDir)Raml.Tools.dll" #>
-<#@ assembly name="System.Runtime, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" #>
+<#@ assembly name="$(binDir)RAML.Api.Core.dll" #>
+<#@ assembly name="System.Runtime" #>
 <#@ assembly name="System.Core" #>
-<#@ assembly name="System" #>
+<#@ import namespace="System" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="Raml.Common" #>
 <#@ import namespace="Raml.Tools" #>
 <#@ import namespace="Raml.Tools.ClientGenerator" #>
-<#@ import namespace="System" #>
 <#@ parameter name="model" type="Raml.Tools.ClientGenerator.ClientGeneratorModel" #>
 <#@ output extension=".cs" #>
 
@@ -39,8 +41,7 @@ namespace $(namespace)
 #>
     /// <summary>
     /// <#= XmlCommentHelper.Escape(classObject.Description) #>
-    /// </summary>
-<#
+    /// </summary><#
 		}
 #>
     public partial class <#= classObject.Name #>
@@ -55,25 +56,20 @@ namespace $(namespace)
 		foreach (var property in classObject.Properties)
 		{
 #>
-
         public virtual <#= property.Name #> <#= property.Name #>
         {
             get { return new <#= property.Name #>(proxy); }
         }
 <#
 		}
-#>
 
-<#
 		foreach (var method in classObject.Methods)
 		{
         // Simple method ----------------------------------------------------------------------------------------
 #>
-
         <#= method.XmlSimpleComment #>
         public virtual async Task<<#= method.ResponseType #>> <#= method.Name #>(<#= method.SimpleParameterString #>)
         {
-
             var url = "<#= method.Url ?? string.Empty #>";
 <#
 	            foreach (var p in method.UriParameters)
@@ -112,7 +108,6 @@ namespace $(namespace)
 <#
 	            }
 #>
-
             url = url.Replace("?&", "?");
 
             var req = new HttpRequestMessage(<#= method.NetHttpMethod #>, url);
@@ -124,8 +119,9 @@ namespace $(namespace)
 	        if (string.IsNullOrEmpty(proxy.OAuthAccessToken))
 				throw new InvalidOperationException("This API call is secured with OAuth, you must provide an access token (set OAuthAccessToken before calling this method)");
 <#
-			        if (model.Security.HeadersCount == 0 && model.Security.QueryParametersCount == 0
-                        || model.Security.HeadersCount > 0)
+			        if (((model.Security.Headers == null || !model.Security.Headers.Any())
+			            && (model.Security.QueryParameters == null || !model.Security.QueryParameters.Any()))
+                        || (model.Security.Headers != null && model.Security.Headers.Any()))
 			        {
 #>
             req.Headers.Add("Authorization", "Bearer " + proxy.OAuthAccessToken);
@@ -149,7 +145,7 @@ namespace $(namespace)
 	                }
 	                else
 	                {
-                        if(method.RequestIsXml){
+                        if(method.RequestContentTypes.Any(c => c.Contains("xml")) && !method.RequestContentTypes.Any(c => c.Contains("json"))){
 #>
 
             var stringWriter = new StringWriter();
@@ -169,7 +165,7 @@ namespace $(namespace)
             string validationCall = "new Lazy<SchemaValidationResults>(() => new SchemaValidationResults(true), true)";
             string validationWithException = "";
 
-            if (method.ResponseType != "ApiResponse" && method.ReturnTypeObject != null)
+            if (method.ResponseType != "ApiResponse" && method.ReturnTypeObject != null && !string.IsNullOrWhiteSpace(method.ReturnTypeObject.JSONSchema))
 			{
                 var jsonSchema = !method.ReturnTypeObject.IsMultiple ? 
 					String.Format("\"{0}\"", method.ReturnTypeObject.JSONSchema) : 
@@ -187,67 +183,61 @@ namespace $(namespace)
 				}
 					
 			}
+
 <#
 			}
-#>
 
-<#
-
-	            if (method.ResponseHeaders.Count == 1)
-	            {
+	        if (method.ResponseHeaders.Count == 1)
+	        {
 #>
             var headers = new <#= method.ResponseHeaderType #>();
             headers.SetProperties(response.Headers);
 <#
-	            }
-	            else if (method.ResponseHeaders.Count > 1)
-	            {
+	        }
+	        else if (method.ResponseHeaders.Count > 1)
+	        {
 #>
             var headers = new <#= method.ResponseHeaderType #>();
             headers.SetProperties(response.Headers, response.StatusCode);
 <#
-                }
-
+            }
 #>
             return new <#= method.ResponseType #>  
-                                            {
-                                                RawContent = response.Content,
-<#                  if (method.ResponseHeaders != null && method.ResponseHeaders.Count > 0) { #>
-                                                Headers = headers, 
+            {
+                RawContent = response.Content,
+<#                  if (method.ResponseHeaders != null && method.ResponseHeaders.Any()) { #>
+                Headers = headers, 
 <#                  } #>
-                                                RawHeaders = response.Headers, 
-                                                StatusCode = response.StatusCode,
-                                                ReasonPhrase = response.ReasonPhrase,
-												SchemaValidation = <#= validationCall #>
-                                            };
-
+                RawHeaders = response.Headers, 
+                StatusCode = response.StatusCode,
+                ReasonPhrase = response.ReasonPhrase,
+				SchemaValidation = <#= validationCall #>
+            };
         }
 <#
 // End simple method ----------------------------------------------------------------------------------------
 #>
-
         <#= method.XmlComment #>
         public virtual async Task<<#= method.ResponseType #>> <#= method.Name #>(<#= method.ParameterString #>)
         {
-
-            var url = "<#= method.Url ?? string.Empty #>";
 <#
-			    if (method.UriParametersCount > 0)
+			    if (method.UriParameters != null && method.UriParameters.Any())
 			    {
 #>
 			if(request.UriParameters == null)
-				throw new InvalidOperationException("Uri Parameters cannot be null");               
+				throw new InvalidOperationException("Uri Parameters cannot be null");
+               
 <#
     			}
-
+#>            var url = "<#= method.Url ?? string.Empty #>";
+<#
 	            foreach (var p in method.UriParameters)
 	            {
 #>
+			if(request.UriParameters.<#= NetNamingMapper.Capitalize(p.Name) #> == null)
+				throw new InvalidOperationException("Uri Parameter <#= NetNamingMapper.Capitalize(p.Name) #> cannot be null");
 
-			if(request.UriParameters.<#= p.Name.Substring(0,1).ToUpper() + p.Name.Substring(1) #> == null)
-				throw new InvalidOperationException("Uri Parameter <#= p.Name.Substring(0,1).ToUpper() + p.Name.Substring(1) #> cannot be null");
-
-            url = url.Replace("{<#= p.Name #>}", request.UriParameters.<#= p.Name.Substring(0,1).ToUpper() + p.Name.Substring(1) #>.ToString());
+            url = url.Replace("{<#= p.Name #>}", request.UriParameters.<#= NetNamingMapper.Capitalize(p.Name) #>.ToString());
 <#
 	            }
 
@@ -280,11 +270,9 @@ namespace $(namespace)
 <#
 	            }
 #>
-
             url = url.Replace("?&", "?");
 
             var req = new HttpRequestMessage(<#= method.NetHttpMethod #>, url);
-
 <#
 		        if (method.UseSecurity && model.Security != null && !string.IsNullOrWhiteSpace(model.Security.AccessTokenUri))
 		        {
@@ -292,8 +280,9 @@ namespace $(namespace)
 	        if (string.IsNullOrEmpty(proxy.OAuthAccessToken))
 				throw new InvalidOperationException("This API call is secured with OAuth, you must provide an access token (set OAuthAccessToken before calling this method)");
 <#
-			        if (model.Security.HeadersCount == 0 && model.Security.QueryParametersCount == 0
-                        || model.Security.HeadersCount > 0)
+			        if (((model.Security.Headers == null || !model.Security.Headers.Any())
+			            && (model.Security.QueryParameters == null || !model.Security.QueryParameters.Any()))
+                        || (model.Security.Headers != null && model.Security.Headers.Any()))
 			        {
 #>
             req.Headers.Add("Authorization", "Bearer " + proxy.OAuthAccessToken);
@@ -342,7 +331,7 @@ namespace $(namespace)
 	                }
 	                else
 	                {
-                        if(method.RequestIsXml){
+                        if(method.RequestContentTypes.Any(c => c.Contains("xml")) && !method.RequestContentTypes.Any(c => c.Contains("json"))){
 #>
             var stringWriter = new StringWriter();
         	new XmlSerializer(typeof (Models.<#= method.Parameter.Type #>)).Serialize(stringWriter, request.Content);
@@ -359,7 +348,7 @@ namespace $(namespace)
 #>
 	        var response = await proxy.Client.SendAsync(req);
 <#
-            if (method.ResponseType != "ApiResponse")
+            if (method.ResponseType != "ApiResponse" && method.ReturnTypeObject != null && !string.IsNullOrWhiteSpace(method.ReturnTypeObject.JSONSchema))
 			{
 #>
 			if (proxy.SchemaValidation.Enabled && proxy.SchemaValidation.RaiseExceptions)
@@ -390,30 +379,30 @@ namespace $(namespace)
 
 #>
             return new <#= method.ResponseType #>  
-                                            {
-                                                RawContent = response.Content,
-<#                  if (method.ResponseHeaders != null && method.ResponseHeaders.Count > 0) { #>
-                                                Headers = headers, 
-<#                  }  #>
-                                                RawHeaders = response.Headers,
-<#                  if (method.ReturnType != "string" && method.ReturnType != "HttpContent") { #>
-	                                            Formatters = responseFormatters,
-<#                  }  #>
-                                                StatusCode = response.StatusCode,
-                                                ReasonPhrase = response.ReasonPhrase,
-												SchemaValidation = <#= validationCall #>
-                                            };
+            {
+                RawContent = response.Content,
 <#
-                
-#>
+                if (method.ResponseHeaders != null && method.ResponseHeaders.Any())
+				{
+#>                Headers = headers, 
+<#
+                }
+#>                RawHeaders = response.Headers,
+<#
+                if (method.ReturnType != "string" && method.ReturnType != "HttpContent")
+				{
+#>                Formatters = responseFormatters,
+<#
+                }
+#>                StatusCode = response.StatusCode,
+                ReasonPhrase = response.ReasonPhrase,
+				SchemaValidation = <#= validationCall #>
+            };
         }
-
 <#
-
     	}
 #>
     }
-
 <#
 	}
 #>
@@ -422,16 +411,12 @@ namespace $(namespace)
     /// </summary>
     public partial class <#= model.Root.Name #>
     {
-
 		public SchemaValidationSettings SchemaValidation { get; private set; } 
 
         protected readonly HttpClient client;
         public const string BaseUri = "<#= model.BaseUri #>";
 
         internal HttpClient Client { get { return client; } }
-
-
-
 <#
     if (model.Security != null && !string.IsNullOrWhiteSpace(model.Security.AccessTokenUri))
     {
@@ -487,24 +472,18 @@ namespace $(namespace)
 				Enabled = true,
 				RaiseExceptions = true
 			};
-        }
-
-        
+        }        
 <#
 	foreach (var property in model.Root.Properties)
 	{
 #>
-
         public virtual <#= property.Name #> <#= property.Name #>
         {
             get { return new <#= property.Name #>(this); }
-        }
-                
+        }                
 <#
 	}
 #>
-
-
 		public void AddDefaultRequestHeader(string name, string value)
 		{
 			client.DefaultRequestHeaders.Add(name, value);
@@ -514,44 +493,25 @@ namespace $(namespace)
 		{
 			client.DefaultRequestHeaders.Add(name, values);
 		}
-
-
     }
-
 } // end namespace
-
-
-
 <#
 var hasXmlSchemas = false;
-foreach (var apiObject in model.Objects)
+foreach (var apiObject in model.Objects.Where(o => !string.IsNullOrWhiteSpace(o.GeneratedCode)))
 {
-    if(string.IsNullOrWhiteSpace(apiObject.GeneratedCode))
-        continue;
-
     hasXmlSchemas = true;
 #>
-
 <#= apiObject.GeneratedCode #>
-
 <#
 }
 #>
 
-
-
-
-
-
 namespace $(namespace).Models
 {
 <#
-foreach (var apiObject in model.Objects)
+foreach (var apiObject in model.Objects.Where(o => string.IsNullOrWhiteSpace(o.GeneratedCode)))
 {
-    if(string.IsNullOrWhiteSpace(apiObject.GeneratedCode))
-        continue;
-
-    if(hasXmlSchemas && apiObject.Properties.Count == 0)
+    if(hasXmlSchemas && !apiObject.Properties.Any())
         continue;
 
     if(apiObject.IsArray && apiObject.Type != null)
@@ -569,7 +529,7 @@ foreach (var apiObject in model.Objects)
 <#
 	}	
 	
-	if(!apiObject.IsMultiple && apiObject.BaseClass != null) 
+	if(!apiObject.IsMultiple && !string.IsNullOrWhiteSpace(apiObject.BaseClass)) 
 	{
 #>
     public partial class <#= apiObject.Name #> <#= " : " +  apiObject.BaseClass #>
@@ -579,7 +539,7 @@ foreach (var apiObject in model.Objects)
 	else 
 	{
 #>
-    public <#= (apiObject.Properties.Count > 0) ? "partial class " : "abstract class " #> <#= apiObject.Name #> <#= apiObject.IsMultiple ? ": ApiMultipleResponse" : string.Empty #>
+    public <#= (apiObject.Properties.Any()) ? "partial class " : "abstract class " #> <#= apiObject.Name #> <#= apiObject.IsMultiple ? ": ApiMultipleResponse" : string.Empty #>
     {
 <#
 	} 
@@ -590,10 +550,8 @@ foreach (var apiObject in model.Objects)
         static readonly Dictionary<HttpStatusCode, string> schemas = new Dictionary<HttpStatusCode, string>
         {
 <#
-		foreach (var property in apiObject.Properties)
+		foreach (var property in apiObject.Properties.Where(p => p.Type != null && p.Name != null && p.JSONSchema != null).ToArray())
 		{
-            if(property == null && property.Type == null || property.Name == null || property.JSONSchema == null)
-                continue;
 #>
 			{ (HttpStatusCode)<#= (int)property.StatusCode #>, "<#= property.JSONSchema #>"},
 <#
@@ -609,10 +567,8 @@ foreach (var apiObject in model.Objects)
         public <#= apiObject.Name #>()
         {
 <#
-		foreach (var property in apiObject.Properties)
+		foreach (var property in apiObject.Properties.Where(p => p != null && p.Type != null && p.Name != null).ToArray())
 		{
-            if(property == null && property.Type == null || property.Name == null || property.JSONSchema == null)
-                continue;
 #>
             names.Add((HttpStatusCode)<#= (int)property.StatusCode #>, "<#= property.Name #>");
             types.Add((HttpStatusCode)<#= (int)property.StatusCode #>, typeof(<#= property.Type #>));
@@ -623,21 +579,17 @@ foreach (var apiObject in model.Objects)
 <#
 	}
 
-	foreach (var property in apiObject.Properties)
+	foreach (var property in apiObject.Properties.Where(p => p != null && p.Type != null && p.Name != null).ToArray())
 	{
-        if(property == null && property.Type == null || property.Name == null || property.JSONSchema == null)
-                continue;
     // this if a whitespace line to separate properties, do not delete !
 #>
-
 <#
 	    if (!string.IsNullOrWhiteSpace(property.Description))
 	    {
 #>
         /// <summary>
         /// <#= XmlCommentHelper.Escape(property.Description) #>
-        /// </summary>
-<#
+        /// </summary><#
     	}
         if(property.IsAdditionalProperties)
         {
@@ -647,49 +599,39 @@ foreach (var apiObject in model.Objects)
         }
 		if(!string.IsNullOrWhiteSpace(property.OriginalName) && property.OriginalName != property.Name)
 		{
-#>
-		[JsonProperty("<#= property.OriginalName #>")]
+#>		[JsonProperty("<#= property.OriginalName #>")]
 <#		} 
 
 		if(property.IsEnum)
 		{
-#>
-		[JsonConverter(typeof(StringEnumConverter))]
-<#		} #>
-        public <#= property.Type #> <#= property.Name #> { get; set; }
-
+#>		[JsonConverter(typeof(StringEnumConverter))]
+<#
+		}
+#>        public <#= property.Type #> <#= property.Name #> { get; set; }
 <#
 	}
 
 #>
-
     } // end class
-
 <#
 }
 
-foreach (var header in model.HeaderObjects.Values)
+foreach (var header in model.HeaderObjects.Values.Where(o => o.Properties.Any()))
 {
-    if(header.Properties.Count == 0)
-        continue;
-
 	if (!string.IsNullOrWhiteSpace(header.Description))
 	{
 #>
     /// <summary>
     /// <#= XmlCommentHelper.Escape(header.Description) #>
-    /// </summary>
-<#
+    /// </summary><#
 	}
 #>
     public partial class <#= header.Name #> : ApiHeader
     {
 
 <#
-	foreach (var property in header.Properties)
+	foreach (var property in header.Properties.Where(p => p != null && p.Type != null && p.Name != null).ToArray())
 	{
-        if(property == null && property.Type == null || property.Name == null || property.JSONSchema == null)
-            continue;
     // this if a whitespace line to separate properties, do not delete !
 #>
 
@@ -700,8 +642,7 @@ foreach (var header in model.HeaderObjects.Values)
 #>
         /// <summary>
         /// <#= XmlCommentHelper.Escape(property.Description) #>
-        /// </summary>
-<#
+        /// </summary><#
 		}
         if(property.IsAdditionalProperties)
         {
@@ -730,18 +671,14 @@ foreach (var header in model.HeaderObjects.Values)
 <#
 }
 
-foreach (var respHeader in model.ResponseHeaderObjects.Values)
+foreach (var respHeader in model.ResponseHeaderObjects.Values.Where(o => o.Properties.Any()))
 {
-    if(respHeader.Properties.Count == 0)
-        continue;
-
 	if (!string.IsNullOrWhiteSpace(respHeader.Description))
 	{
 #>
     /// <summary>
     /// <#= XmlCommentHelper.Escape(respHeader.Description) #>
-    /// </summary>
-<#
+    /// </summary><#
 	}
 #>
     public partial class <#= respHeader.Name #> : <#= respHeader.IsMultiple ? "ApiMultipleObject" : "ApiResponseHeader" #>
@@ -753,10 +690,8 @@ foreach (var respHeader in model.ResponseHeaderObjects.Values)
         public <#= respHeader.Name #>()
         {
 <#
-		foreach (var property in respHeader.Properties)
+		foreach (var property in respHeader.Properties.Where(p => p != null && p.Type != null && p.Name != null).ToArray())
 		{
-            if(property == null && property.Type == null || property.Name == null || property.JSONSchema == null)
-                continue;
 #>
             names.Add((HttpStatusCode)<#= (int)property.StatusCode #>, "<#= property.Name #>");
             types.Add((HttpStatusCode)<#= (int)property.StatusCode #>, typeof(<#= property.Type #>));
@@ -768,10 +703,8 @@ foreach (var respHeader in model.ResponseHeaderObjects.Values)
 		public void SetProperties(HttpResponseHeaders headers, HttpStatusCode statusCode)
 	    {
 <#
-		foreach (var property in respHeader.Properties)
+		foreach (var property in respHeader.Properties.Where(p => p != null && p.Type != null && p.Name != null).ToArray())
 		{
-            if(property == null && property.Type == null || property.Name == null || property.JSONSchema == null)
-                continue;
 #>
 		    if (statusCode == (HttpStatusCode)<#= (int)property.StatusCode #>)
 		    {
@@ -792,10 +725,8 @@ foreach (var respHeader in model.ResponseHeaderObjects.Values)
 <#
 	}
 
-	foreach (var property in respHeader.Properties)
+	foreach (var property in respHeader.Properties.Where(p => p != null && p.Type != null && p.Name != null).ToArray())
 	{
-        if(property == null && property.Type == null || property.Name == null || property.JSONSchema == null)
-            continue;
     // this if a whitespace line to separate properties, do not delete !
 #>
 
@@ -805,8 +736,7 @@ foreach (var respHeader in model.ResponseHeaderObjects.Values)
 #>
         /// <summary>
         /// <#= XmlCommentHelper.Escape(property.Description) #>
-        /// </summary>
-<#
+        /// </summary><#
 	    }
         if(property.IsAdditionalProperties)
         {
@@ -843,8 +773,7 @@ foreach (var apiObject in model.ApiRequestObjects)
 #>
     /// <summary>
     /// <#= XmlCommentHelper.Escape(apiObject.Description) #>
-    /// </summary>
-<#
+    /// </summary><#
 	}
 #>
     public partial class <#= apiObject.Name #> : ApiRequest
@@ -852,33 +781,22 @@ foreach (var apiObject in model.ApiRequestObjects)
         public <#= apiObject.Name #>(<#= apiObject.ConstructorParams #>)
         {
 <#
-        foreach (var property in apiObject.Properties)
+        foreach (var property in apiObject.Properties.Where(p => p != null && p.Type != null && p.Name != null).ToArray())
         {
-            if(property == null && property.Type == null || property.Name == null || property.JSONSchema == null)
-                continue;
-#>
-            this.<#= property.Name #> = <#= property.Name #>;
+#>            this.<#= property.Name #> = <#= property.Name #>;
 <#
         }
-#>
-        }
-
-<#
-	foreach (var property in apiObject.Properties)
+#>        }<#
+	foreach (var property in apiObject.Properties.Where(p => p != null && p.Type != null && p.Name != null).ToArray())
 	{
-        if(property == null && property.Type == null || property.Name == null || property.JSONSchema == null)
-            continue;
     // this if a whitespace line to separate properties, do not delete !
 #>
-
 <#
 	    if (!string.IsNullOrWhiteSpace(property.Description))
 	    {
-#>
-        /// <summary>
+#>        /// <summary>
         /// <#= XmlCommentHelper.Escape(property.Description) #>
-        /// </summary>
-<#
+        /// </summary><#
     	}
 #>
         public <#= property.Type #> <#= property.Name #> { get; set; }
@@ -886,9 +804,7 @@ foreach (var apiObject in model.ApiRequestObjects)
 	}
 
 #>
-
     } // end class
-
 <#
 }
 
@@ -900,38 +816,30 @@ foreach (var apiObject in model.ApiResponseObjects)
 #>
     /// <summary>
     /// <#= XmlCommentHelper.Escape(apiObject.Description) #>
-    /// </summary>
-<#
+    /// </summary><#
 	}
 #>
-
     public partial class <#= apiObject.Name #> : ApiResponse
     {
-
 <#
-	foreach (var property in apiObject.Properties)
+	foreach (var property in apiObject.Properties.Where(p => p != null && p.Type != null && p.Name != null && p.Name != "Content").ToArray())
 	{
-        if(property == null && property.Type == null || property.Name == null || property.JSONSchema == null || property.Name == "Content")
-            continue;
-
     // this if a whitespace line to separate properties, do not delete !
 #>
-
 <#
 	    if (!string.IsNullOrWhiteSpace(property.Description))
 	    {
 #>
         /// <summary>
         /// <#= XmlCommentHelper.Escape(property.Description) #>
-        /// </summary>
-<#
+        /// </summary><#
     	}
 #>
         public <#= property.Type #> <#= property.Name #> { get; set; }
 <#
 	}
 
-	var body = apiObject.GetContentOrDefault();
+	var body = apiObject.Properties.FirstOrDefault(p => p.Name == "Content");
 	if (body != null)
 	{
 		if (body.Type.StartsWith("Multiple"))
@@ -986,7 +894,6 @@ foreach (var apiObject in model.ApiResponseObjects)
 		else
 		{
 #>
-
 	    private <#= body.Type #> typedContent;
         /// <summary>
         /// Typed Response content
@@ -1012,26 +919,70 @@ foreach (var apiObject in model.ApiResponseObjects)
                 }
                 else
                 {
+<#
+        if(apiObject.IsUnionType)
+        {
+#>
+                    typedContent = new <#= body.Type.StartsWith("IList") ? body.Type.Substring(1) : body.Type #>();
+
+                    try
+                    {
+                        var task = Formatters != null && Formatters.Any()
+                                    ? RawContent.ReadAsAsync<<#= body.Type.StartsWith("IList") ? body.Type.Substring(1) : body.Type #>>(Formatters).ConfigureAwait(false)
+                                    : RawContent.ReadAsAsync<<#= body.Type.StartsWith("IList") ? body.Type.Substring(1) : body.Type #>>().ConfigureAwait(false);
+
+                        typedContent = task.GetAwaiter().GetResult();
+                        return typedContent;
+                    }
+                    catch (JsonSerializationException) { }
+
+                    var type = typedContent.GetType().IsGenericType
+                        ? typedContent.GetType().GetGenericArguments()[0]
+                        : typedContent.GetType();
+
+                    foreach (var prop in type.GetProperties())
+                    {
+                        try
+                        {
+                            var propertyType = prop.PropertyType;
+                            if (propertyType.IsInterface) // get List concrete type instead of interface
+                            {
+                                var typeName = "System.Collections.Generic.List`1[[" + propertyType.GetGenericArguments()[0] + "," + this.GetType().Assembly.FullName + "]]";
+                                propertyType = Type.GetType(typeName);
+                            }
+                            var task = Formatters != null && Formatters.Any()
+                                        ? RawContent.ReadAsAsync(propertyType, Formatters).ConfigureAwait(false)
+                                        : RawContent.ReadAsAsync(propertyType).ConfigureAwait(false);
+
+                            var content = task.GetAwaiter().GetResult();
+                            if(content == null)
+                                continue;
+
+                            prop.SetValue(typedContent, content);
+                            return typedContent;
+                        }
+                        catch (JsonSerializationException) { }
+                    }
+<#
+        } else {
+#>
                     var task =  Formatters != null && Formatters.Any() 
                                 ? RawContent.ReadAsAsync<<#= body.Type #>>(Formatters).ConfigureAwait(false)
                                 : RawContent.ReadAsAsync<<#= body.Type #>>().ConfigureAwait(false);
 		        
 		            typedContent = task.GetAwaiter().GetResult();
+<#      
+        } 
+#>
                 }
-
 		        return typedContent;
 	        }
 	    }
-
-		
-
 <#
 		}
 	}
 #>
-
     } // end class
-
 <#
 }
 
@@ -1042,11 +993,9 @@ foreach (var apiEnum in model.Enums)
 #>
     /// <summary>
     /// <#= XmlCommentHelper.Escape(apiEnum.Description) #>
-    /// </summary>
-<#
-	}	
+    /// </summary><#
+	}
 #>
-	
 	public enum <#= apiEnum.Name #>
 	{
 		<#= string.Join(", ", apiEnum.Values) #>
@@ -1056,9 +1005,9 @@ foreach (var apiEnum in model.Enums)
 }
 
 
-	if (model.Warnings.Count > 0){
+	if (model.Warnings.Any()){
 #>
-    // Unable to parse the following Schemas. Please note that JSON Schema version 4 is not supported
+    // Unable to parse the following Schemas. Please note that JSON Schema version 4 is partially supported
 <#
 		foreach (var warning in model.Warnings)
 		{
@@ -1068,5 +1017,4 @@ foreach (var apiEnum in model.Enums)
 		}
     }
 #>
-
 } // end Models namespace
