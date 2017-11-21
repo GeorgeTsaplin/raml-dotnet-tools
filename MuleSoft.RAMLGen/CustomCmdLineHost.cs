@@ -1,7 +1,9 @@
 ﻿using System;
 using System.CodeDom.Compiler;
 using System.Collections.Generic;
+using System.Configuration;
 using System.IO;
+using System.Linq;
 using System.Text;
 using Microsoft.VisualStudio.TextTemplating;
 
@@ -15,6 +17,24 @@ namespace MuleSoft.RAMLGen
     [Serializable]
     public class CustomCmdLineHost : ITextTemplatingEngineHost, ITextTemplatingSessionHost
     {
+        private static readonly string[] AssemblyReferences;
+        static CustomCmdLineHost()
+        {
+            const string AssemblyRefPrefix = "asmref:";
+
+            var refs = new List<string>(new[]
+            {
+                typeof(System.Uri).Assembly.Location,
+                typeof(System.Linq.Enumerable).Assembly.Location
+            });
+
+            refs.AddRange(ConfigurationManager.AppSettings.AllKeys
+                .Where(x => x.StartsWith(AssemblyRefPrefix))
+                .Select(key => ConfigurationManager.AppSettings[key])
+                .Where(settingValue => !string.IsNullOrWhiteSpace(settingValue)));
+
+            AssemblyReferences = refs.ToArray();
+        }
         //the path and file name of the text template that is being processed
         //---------------------------------------------------------------------
         internal string TemplateFileValue;
@@ -58,26 +78,8 @@ namespace MuleSoft.RAMLGen
         //The engine will use these references when compiling and
         //executing the generated transformation class.
         //--------------------------------------------------------------
-        public IList<string> StandardAssemblyReferences
-        {
-            get
-            {
-                return new string[]
-                {
-                    //If this host searches standard paths and the GAC,
-                    //we can specify the assembly name like this.
-                    //---------------------------------------------------------
-                    //"System"
+        public IList<string> StandardAssemblyReferences => AssemblyReferences;
 
-                    //Because this host only resolves assemblies from the 
-                    //fully qualified path and name of the assembly,
-                    //this is a quick way to get the code to give us the
-                    //fully qualified path and name of the System assembly.
-                    //---------------------------------------------------------
-                    typeof(System.Uri).Assembly.Location
-                };
-            }
-        }
         //The host can provide standard imports or using statements.
         //The engine will add these statements to the generated 
         //transformation class.
