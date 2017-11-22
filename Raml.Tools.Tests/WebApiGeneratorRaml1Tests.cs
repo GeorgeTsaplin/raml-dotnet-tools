@@ -101,7 +101,7 @@ namespace Raml.Tools.Tests
             Assert.AreEqual("ArtistByTrack", model.Objects.First(c => c.Name == "ArtistByTrack").Type);
             Assert.AreEqual("Dictionary<string,Artist>", model.Objects.First(c => c.Name == "ArtistByTrack").BaseClass);
             Assert.AreEqual("TracksByArtist", model.Objects.First(c => c.Name == "TracksByArtist").Type);
-            Assert.AreEqual("Dictionary<string,IList<Track>>", model.Objects.First(c => c.Name == "TracksByArtist").BaseClass);
+            Assert.AreEqual("Dictionary<string,Track[]>", model.Objects.First(c => c.Name == "TracksByArtist").BaseClass);
 
             Assert.AreEqual("ArtistByTrack", model.Controllers.First(c => c.Name == "Artists").Methods.First(m => m.Url == "bytrack/{id}").ReturnType);
             Assert.AreEqual("TracksByArtist", model.Controllers.First(c => c.Name == "Tracks").Methods.First(m => m.Url == "byartist/{id}").ReturnType);
@@ -133,7 +133,7 @@ namespace Raml.Tools.Tests
             Assert.AreEqual("ArtistByTrack", model.Objects.First(c => c.Name == "ArtistByTrack").Type);
             Assert.AreEqual("Dictionary<string,Artist>", model.Objects.First(c => c.Name == "ArtistByTrack").BaseClass);
             Assert.AreEqual("TracksByArtist", model.Objects.First(c => c.Name == "TracksByArtist").Type);
-            Assert.AreEqual("Dictionary<string,IList<Track>>", model.Objects.First(c => c.Name == "TracksByArtist").BaseClass);
+            Assert.AreEqual("Dictionary<string,Track[]>", model.Objects.First(c => c.Name == "TracksByArtist").BaseClass);
 
             Assert.AreEqual("ArtistByTrack", model.Controllers.First(c => c.Name == "Artists").Methods.First(m => m.Url == "bytrack/{id}").ReturnType);
             Assert.AreEqual("TracksByArtist", model.Controllers.First(c => c.Name == "Tracks").Methods.First(m => m.Url == "byartist/{id}").ReturnType);

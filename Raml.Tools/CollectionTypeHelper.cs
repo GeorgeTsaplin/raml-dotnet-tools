@@ -2,6 +2,7 @@ namespace Raml.Tools
 {
     public class CollectionTypeHelper
     {
+        /*// IList implementation
         public const string CollectionType = "IList";
 
         public static string GetCollectionType(string netType)
@@ -24,6 +25,16 @@ namespace Raml.Tools
         {
             return type.StartsWith(CollectionType);
         }
+        */
 
+        // Array impl
+        private const string CollectionPostfix = "[]";
+
+        public static string GetCollectionType(string netType) => netType + CollectionPostfix;
+
+        public static string GetBaseType(string type) => !IsCollection(type) ? type : type.Substring(0, type.Length - CollectionPostfix.Length);
+
+        public static bool IsCollection(string type) => type.EndsWith(CollectionPostfix);
+        
     }
 }

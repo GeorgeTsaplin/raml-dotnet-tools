@@ -347,7 +347,7 @@ namespace Raml.Tools
 
         private bool IsCollectionType(string type)
         {
-            return type.EndsWith(">") && type.StartsWith(CollectionTypeHelper.CollectionType);
+            return CollectionTypeHelper.IsCollection(type);
         }
 
         protected void ParseSchemas()
