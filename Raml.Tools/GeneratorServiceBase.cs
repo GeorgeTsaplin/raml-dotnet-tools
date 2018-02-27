@@ -338,7 +338,7 @@ namespace Raml.Tools
 
                     if (!NetTypeMapper.IsPrimitiveType(type) && schemaResponseObjects.All(o => o.Value.Name != type) 
                         && schemaRequestObjects.All(o => o.Value.Name != type)
-                        && enums.All(e => e.Value.Name != type)
+                        && enums.All(e => e.Value.Name != type.TrimEnd('?'))
                         && schemaObjects.All(o => o.Value.Name != type))
                         apiObject.Properties.Remove(prop);
                 }
