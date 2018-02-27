@@ -434,8 +434,13 @@ namespace Raml.Tools
             if (string.IsNullOrWhiteSpace(prop.Type))
                 return "string";
 
-            if (prop.Type == "object" || (prop.Scalar.Enum != null && prop.Scalar.Enum.Any()))
+            if (prop.Type == "object")
                 return NetNamingMapper.GetPropertyName(kv.Key);
+
+            if (prop.Scalar.Enum != null && prop.Scalar.Enum.Any())
+            {
+                return NetNamingMapper.GetPropertyName(kv.Key) + (prop.Scalar.Required ? string.Empty : "?");
+            }
 
             var propertyType = NetTypeMapper.GetNetType(prop.Scalar.Type, prop.Scalar.Format);
             if (propertyType != null)
